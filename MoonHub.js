@@ -13,10 +13,6 @@
     this.emotes = {};
   }
 
-  // =============================
-  // EVENTS
-  // =============================
-
   MoonHub.prototype.on = function (type, cb) {
     (this.listeners[type] = this.listeners[type] || []).push(cb);
   };
@@ -30,10 +26,6 @@
     this.emit(event.type, event);
   };
 
-  // =============================
-  // UTIL
-  // =============================
-
   MoonHub.prototype.escape = function (input) {
     return String(input).replace(/[&<>"']/g, m => ({
       "&": "&amp;",
@@ -43,17 +35,6 @@
       "'": "&#39;"
     }[m]));
   };
-
-  MoonHub.prototype.safeReplace = function (text, replacer) {
-    return text
-      .split(/(<[^>]*>)/g)
-      .map((part, i) => i % 2 === 0 ? replacer(part) : part)
-      .join('');
-  };
-
-  // =============================
-  // EMOTES LOADERS
-  // =============================
 
   MoonHub.prototype._getTwitchId = async function (channel) {
     try {
@@ -108,14 +89,9 @@
     } catch {}
   };
 
-  // =============================
-  // PARSER
-  // =============================
-
   MoonHub.prototype.parseEmotes = function (text, meta = {}) {
     let msg = this.escape(text);
 
-    // TWITCH native
     if (meta.emotes) {
       let chars = [...msg];
       let replacements = [];
@@ -132,11 +108,13 @@
       });
 
       replacements.sort((a, b) => b.start - a.start);
-      replacements.forEach(r => chars.splice(r.start, r.length, r.html));
+      replacements.forEach(r => {
+        chars.splice(r.start, r.length, r.html);
+      });
+
       msg = chars.join("");
     }
 
-    // KICK emotes
     msg = msg.replace(/\[emote:(\d+):?[^\]]*\]/g,
       `<img src="https://files.kick.com/emotes/$1/fullsize" class="emote">`
     );
@@ -145,25 +123,24 @@
       `<img src="https://dbxmjjzl5pc1g.cloudfront.net/a984b19b-fb89-450b-b4c3-6e4fadd199c9/images/emojis/$1.png" class="emote">`
     );
 
-    // 7TV / BTTV / FFZ
-    msg = this.safeReplace(msg, (plain) => {
-      Object.keys(this.emotes).forEach(name => {
-        const safe = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`\\b${safe}\\b`, "g");
+    if (!this.emotes || Object.keys(this.emotes).length === 0) return msg;
 
-        plain = plain.replace(regex,
-          `<img src="${this.emotes[name].url}" class="emote">`
-        );
+    const parts = msg.split(/(<[^>]*>)/g);
+
+    for (let i = 0; i < parts.length; i++) {
+      if (i % 2 !== 0) continue;
+
+      parts[i] = parts[i].replace(/([^\s]+)/g, (word) => {
+        const clean = word.replace(/[^\w]/g, '');
+        if (this.emotes[clean]) {
+          return word.replace(clean, `<img src="${this.emotes[clean].url}" class="emote">`);
+        }
+        return word;
       });
-      return plain;
-    });
+    }
 
-    return msg;
+    return parts.join("");
   };
-
-  // =============================
-  // NORMALIZE
-  // =============================
 
   MoonHub.prototype.normalizeMessage = function (platform, user, text, extra) {
     return {
@@ -193,10 +170,6 @@
     };
   };
 
-  // =============================
-  // TWITCH
-  // =============================
-
   MoonHub.prototype.connectTwitch = async function (channel) {
     if (typeof ComfyJS === "undefined") return;
 
@@ -218,16 +191,11 @@
     };
   };
 
-  // =============================
-  // STREAM ELEMENTS (RESTORED)
-  // =============================
-
   MoonHub.prototype.connectStreamElements = function () {
     window.addEventListener("onEventReceived", (obj) => {
       const listener = obj.detail.listener;
       const event = obj.detail.event;
 
-      // CHAT (YouTube / SE)
       if (listener === "message") {
         const data = event.data;
 
@@ -240,7 +208,6 @@
         return;
       }
 
-      // ALERTS
       const type = listener.split("-")[0];
 
       const map = {
@@ -261,10 +228,6 @@
       }
     });
   };
-
-  // =============================
-  // KICK
-  // =============================
 
   MoonHub.prototype.connectKick = function (channel) {
     fetch(`https://kick.com/api/v2/channels/${channel}`)
