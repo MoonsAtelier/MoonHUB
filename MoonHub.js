@@ -1,0 +1,186 @@
+(function (global, factory) {
+  if (typeof define === "function" && define.amd) {
+    define([], factory);
+  } else if (typeof module === "object" && module.exports) {
+    module.exports = factory();
+  } else {
+    global.MoonHub = factory();
+  }
+})(this, function () {
+  function MoonHub(config) {
+    this.config = config || {};
+    this.listeners = {
+      message: [],
+      alert: [],
+      raw: []
+    };
+  }
+
+  MoonHub.prototype.on = function (type, cb) {
+    if (!this.listeners[type]) this.listeners[type] = [];
+    this.listeners[type].push(cb);
+  };
+
+  MoonHub.prototype.emit = function (type, payload) {
+    if (this.listeners.raw) {
+      this.listeners.raw.forEach(fn => fn(payload));
+    }
+    if (this.listeners[type]) {
+      this.listeners[type].forEach(fn => fn(payload));
+    }
+  };
+
+  MoonHub.prototype.normalizeMessage = function (platform, user, text, extra) {
+    return {
+      platform: platform,
+      type: "message",
+      user: {
+        name: user,
+        color: (extra && extra.color) || "#fff"
+      },
+      content: {
+        text: text,
+        html: text
+      },
+      meta: {
+        badges: (extra && extra.badges) || "",
+        emotes: (extra && extra.emotes) || [],
+        raw: (extra && extra.raw) || null
+      },
+      timestamp: Date.now()
+    };
+  };
+
+  MoonHub.prototype.normalizeAlert = function (platform, name, text, raw) {
+    return {
+      platform: platform,
+      type: "alert",
+      user: {
+        name: name
+      },
+      content: {
+        text: text
+      },
+      meta: {
+        raw: raw || null
+      },
+      timestamp: Date.now()
+    };
+  };
+
+  MoonHub.prototype.use = function (plugin) {
+    plugin(this);
+  };
+
+  MoonHub.prototype.connectTwitch = function (channel) {
+    if (typeof ComfyJS === "undefined") return;
+
+    ComfyJS.Init(channel);
+
+    ComfyJS.onChat = (user, message, flags, self, extra) => {
+      if (self) return;
+
+      const normalized = this.normalizeMessage("twitch", user, message, {
+        color: extra.userColor,
+        raw: extra
+      });
+
+      this.emit("message", normalized);
+    };
+  };
+
+  MoonHub.prototype.connectStreamElements = function () {
+    window.addEventListener("onEventReceived", (obj) => {
+      const listener = obj.detail.listener;
+      const event = obj.detail.event;
+
+      if (listener === "message") {
+        const data = event.data;
+
+        const normalized = this.normalizeMessage(
+          "youtube",
+          data.displayName,
+          data.text,
+          {
+            color: data.displayColor,
+            badges: data.badges,
+            raw: data
+          }
+        );
+
+        this.emit("message", normalized);
+        return;
+      }
+
+      const type = listener.split("-")[0];
+
+      const map = {
+        follower: "New Follower",
+        tip: event.amount ? `Tip $${event.amount}` : "Tip",
+        superchat: event.amount ? `Superchat $${event.amount}` : "Superchat",
+        raid: event.amount ? `Raid x${event.amount}` : "Raid",
+        sponsor: "New Member"
+      };
+
+      if (map[type]) {
+        const normalized = this.normalizeAlert(
+          "youtube",
+          event.name || "unknown",
+          map[type],
+          event
+        );
+
+        this.emit("alert", normalized);
+      }
+    });
+  };
+
+  MoonHub.prototype.connectKick = function (channel) {
+    fetch("https://mrboostlive.com/kick/api/?channel=" + channel)
+      .then(r => r.json())
+      .then(data => {
+        const chatroomId = data.chatroom.id;
+
+        const ws = new WebSocket(
+          "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=7.6.0&flash=false"
+        );
+
+        ws.onopen = () => {
+          ws.send(JSON.stringify({
+            event: "pusher:subscribe",
+            data: {
+              channel: "chatrooms." + chatroomId + ".v2"
+            }
+          }));
+        };
+
+        ws.onmessage = (msg) => {
+          try {
+            const parsed = JSON.parse(msg.data);
+            const inner = JSON.parse(parsed.data);
+
+            if (inner.type !== "message") return;
+
+            const normalized = this.normalizeMessage(
+              "kick",
+              inner.sender.username,
+              inner.content,
+              {
+                color: inner.sender.identity.color,
+                raw: inner
+              }
+            );
+
+            this.emit("message", normalized);
+          } catch (e) {}
+        };
+      });
+  };
+
+  MoonHub.prototype.inject = function (event) {
+    if (event.type === "message") this.emit("message", event);
+    if (event.type === "alert") this.emit("alert", event);
+  };
+
+  return MoonHub;
+});
