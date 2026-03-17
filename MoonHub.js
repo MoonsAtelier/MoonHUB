@@ -13,6 +13,10 @@
     this.emotes = {};
   }
 
+  // =============================
+  // EVENTS
+  // =============================
+
   MoonHub.prototype.on = function (type, cb) {
     (this.listeners[type] = this.listeners[type] || []).push(cb);
   };
@@ -40,7 +44,6 @@
     }[m]));
   };
 
-  // Evita reemplazar dentro de HTML
   MoonHub.prototype.safeReplace = function (text, replacer) {
     return text
       .split(/(<[^>]*>)/g)
@@ -49,7 +52,7 @@
   };
 
   // =============================
-  // EMOTES LOADING
+  // EMOTES LOADERS
   // =============================
 
   MoonHub.prototype._getTwitchId = async function (channel) {
@@ -73,9 +76,7 @@
       [...(user.emote_set?.emotes || []), ...(global.emotes || [])].forEach(e => {
         const file = e.data.host.files.find(f => f.name.includes("4x"));
         if (!file) return;
-        this.emotes[e.name] = {
-          url: "https:" + e.data.host.url + "/" + file.name
-        };
+        this.emotes[e.name] = { url: "https:" + e.data.host.url + "/" + file.name };
       });
     } catch {}
   };
@@ -91,9 +92,7 @@
       ]);
 
       [...global, ...(user.channelEmotes || []), ...(user.sharedEmotes || [])].forEach(e => {
-        this.emotes[e.code] = {
-          url: `https://cdn.betterttv.net/emote/${e.id}/3x`
-        };
+        this.emotes[e.code] = { url: `https://cdn.betterttv.net/emote/${e.id}/3x` };
       });
     } catch {}
   };
@@ -103,22 +102,20 @@
       const data = await fetch(`https://api.frankerfacez.com/v1/room/${channel}`).then(r => r.json());
       Object.values(data.sets).forEach(set => {
         set.emoticons.forEach(e => {
-          this.emotes[e.name] = {
-            url: "https:" + e.urls["4"]
-          };
+          this.emotes[e.name] = { url: "https:" + e.urls["4"] };
         });
       });
     } catch {}
   };
 
   // =============================
-  // EMOTE PARSER (CORE)
+  // PARSER
   // =============================
 
   MoonHub.prototype.parseEmotes = function (text, meta = {}) {
     let msg = this.escape(text);
 
-    // -------- TWITCH NATIVE (posición) --------
+    // TWITCH native
     if (meta.emotes) {
       let chars = [...msg];
       let replacements = [];
@@ -135,14 +132,11 @@
       });
 
       replacements.sort((a, b) => b.start - a.start);
-      replacements.forEach(r => {
-        chars.splice(r.start, r.length, r.html);
-      });
-
+      replacements.forEach(r => chars.splice(r.start, r.length, r.html));
       msg = chars.join("");
     }
 
-    // -------- KICK EMOTES --------
+    // KICK emotes
     msg = msg.replace(/\[emote:(\d+):?[^\]]*\]/g,
       `<img src="https://files.kick.com/emotes/$1/fullsize" class="emote">`
     );
@@ -151,7 +145,7 @@
       `<img src="https://dbxmjjzl5pc1g.cloudfront.net/a984b19b-fb89-450b-b4c3-6e4fadd199c9/images/emojis/$1.png" class="emote">`
     );
 
-    // -------- 7TV / BTTV / FFZ --------
+    // 7TV / BTTV / FFZ
     msg = this.safeReplace(msg, (plain) => {
       Object.keys(this.emotes).forEach(name => {
         const safe = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -172,8 +166,6 @@
   // =============================
 
   MoonHub.prototype.normalizeMessage = function (platform, user, text, extra) {
-    const parsed = this.parseEmotes(text, extra);
-
     return {
       type: "message",
       platform,
@@ -182,7 +174,7 @@
         color: (extra && extra.color) || "#fff"
       },
       content: {
-        text: parsed,
+        text: this.parseEmotes(text, extra),
         raw: text
       },
       meta: extra || {},
@@ -224,6 +216,50 @@
         raw: extra
       }));
     };
+  };
+
+  // =============================
+  // STREAM ELEMENTS (RESTORED)
+  // =============================
+
+  MoonHub.prototype.connectStreamElements = function () {
+    window.addEventListener("onEventReceived", (obj) => {
+      const listener = obj.detail.listener;
+      const event = obj.detail.event;
+
+      // CHAT (YouTube / SE)
+      if (listener === "message") {
+        const data = event.data;
+
+        this.emit("message", this.normalizeMessage(
+          "youtube",
+          data.displayName,
+          data.text,
+          { color: data.displayColor, raw: data }
+        ));
+        return;
+      }
+
+      // ALERTS
+      const type = listener.split("-")[0];
+
+      const map = {
+        follower: "Follow",
+        tip: `Tip $${event.amount || ""}`,
+        superchat: `Superchat $${event.amount || ""}`,
+        raid: `Raid x${event.amount || ""}`,
+        sponsor: "Member"
+      };
+
+      if (map[type]) {
+        this.emit("alert", this.normalizeAlert(
+          "youtube",
+          event.name || "unknown",
+          map[type],
+          event
+        ));
+      }
+    });
   };
 
   // =============================
