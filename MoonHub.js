@@ -136,9 +136,16 @@
   };
 
   MoonHub.prototype.connectKick = function (channel) {
-    fetch("https://mrboostlive.com/kick/api/?channel=" + channel)
-      .then(r => r.json())
+    fetch("https://kick.com/api/v2/channels/" + channel)
+      .then(r => {
+        if (!r.ok) throw new Error("Kick API failed");
+        return r.json();
+      })
       .then(data => {
+        if (!data.chatroom || !data.chatroom.id) {
+          throw new Error("Invalid Kick chatroom");
+        }
+
         const chatroomId = data.chatroom.id;
 
         const ws = new WebSocket(
@@ -157,23 +164,54 @@
         ws.onmessage = (msg) => {
           try {
             const parsed = JSON.parse(msg.data);
+            if (!parsed.data) return;
+
             const inner = JSON.parse(parsed.data);
 
-            if (inner.type !== "message") return;
+            if (parsed.event === "App\\Events\\ChatMessageEvent") {
+              const normalized = this.normalizeMessage(
+                "kick",
+                inner.sender.username,
+                inner.content,
+                {
+                  color: inner.sender.identity.color,
+                  raw: inner
+                }
+              );
+              this.emit("message", normalized);
+            }
 
-            const normalized = this.normalizeMessage(
-              "kick",
-              inner.sender.username,
-              inner.content,
-              {
-                color: inner.sender.identity.color,
-                raw: inner
-              }
-            );
+            if (parsed.event === "App\\Events\\SubscriptionEvent") {
+              this.emit("alert", this.normalizeAlert(
+                "kick",
+                inner.username,
+                `Sub x${inner.months}`,
+                inner
+              ));
+            }
 
-            this.emit("message", normalized);
+            if (parsed.event === "App\\Events\\GiftedSubscriptionsEvent") {
+              this.emit("alert", this.normalizeAlert(
+                "kick",
+                inner.gifter_username,
+                `Gifted x${inner.gifted_usernames?.length || 1}`,
+                inner
+              ));
+            }
+
           } catch (e) {}
         };
+
+        ws.onerror = () => {
+          console.error("MoonHub Kick WS error");
+        };
+
+        ws.onclose = () => {
+          setTimeout(() => this.connectKick(channel), 2000);
+        };
+      })
+      .catch(() => {
+        setTimeout(() => this.connectKick(channel), 3000);
       });
   };
 
