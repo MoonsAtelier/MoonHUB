@@ -9,11 +9,8 @@
 })(this, function () {
   function MoonHub(config) {
     this.config = config || {};
-    this.listeners = {
-      message: [],
-      alert: [],
-      raw: []
-    };
+    this.listeners = { message: [], alert: [], raw: [] };
+    this.thirdPartyEmotes = [];
   }
 
   MoonHub.prototype.on = function (type, cb) {
@@ -22,80 +19,75 @@
   };
 
   MoonHub.prototype.emit = function (type, payload) {
-    if (this.listeners.raw) {
-      this.listeners.raw.forEach(fn => fn(payload));
-    }
-    if (this.listeners[type]) {
-      this.listeners[type].forEach(fn => fn(payload));
-    }
+    if (this.listeners.raw) this.listeners.raw.forEach(fn => fn(payload));
+    if (this.listeners[type]) this.listeners[type].forEach(fn => fn(payload));
+  };
+
+  MoonHub.prototype.escape = function (str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   };
 
   MoonHub.prototype.processKickEmotes = function (text) {
-    if (!text) return text;
-
-    text = text.replace(
-      /\[emote:(\d+):?[^\]]*\]/g,
-      '<img src="https://files.kick.com/emotes/$1/fullsize" class="emote">'
-    );
-
-    text = text.replace(
-      /\[emoji:(\w+)\]/g,
-      '<img src="https://dbxmjjzl5pc1g.cloudfront.net/a984b19b-fb89-450b-b4c3-6e4fadd199c9/images/emojis/$1.png" class="emote">'
-    );
-
-    return text;
+    return text
+      .replace(/\[emote:(\d+):?[^\]]*\]/g, '<img src="https://files.kick.com/emotes/$1/fullsize" class="emote">')
+      .replace(/\[emoji:(\w+)\]/g, '<img src="https://dbxmjjzl5pc1g.cloudfront.net/a984b19b-fb89-450b-b4c3-6e4fadd199c9/images/emojis/$1.png" class="emote">');
   };
 
-  MoonHub.prototype.processTwitchEmotes = function (text, emotes) {
-    if (!text || !emotes || !Object.keys(emotes).length) return text;
+  MoonHub.prototype.processTwitchNative = function (text, emotes) {
+    if (!emotes || !Object.keys(emotes).length) return text;
 
-    let msgChars = [...text];
-    let replacements = [];
+    let chars = [...text];
+    let reps = [];
 
-    Object.entries(emotes).forEach(([id, positions]) => {
-      positions.forEach(p => {
-        let [start, end] = p.split("-");
-        start = parseInt(start);
-        end = parseInt(end);
-        replacements.push([start, end - start + 1, id]);
+    Object.entries(emotes).forEach(([id, pos]) => {
+      pos.forEach(p => {
+        let [s, e] = p.split("-");
+        s = +s; e = +e;
+        reps.push([s, e - s + 1, id]);
       });
     });
 
-    replacements.sort((a, b) => b[0] - a[0]);
+    reps.sort((a, b) => b[0] - a[0]);
 
-    replacements.forEach(([start, length, id]) => {
-      const html = `<img src="https://static-cdn.jtvnw.net/emoticons/v2/${id}/default/light/1.0" class="emote">`;
-      msgChars.splice(start, length, html);
+    reps.forEach(([s, l, id]) => {
+      chars.splice(s, l, `<img src="https://static-cdn.jtvnw.net/emoticons/v2/${id}/default/light/1.0" class="emote">`);
     });
 
-    return msgChars.join("");
+    return chars.join("");
+  };
+
+  MoonHub.prototype.processThirdParty = function (text) {
+    let html = text;
+    this.thirdPartyEmotes.forEach(e => {
+      const r = new RegExp(`\\b${this.escape(e.name)}\\b`, "g");
+      html = html.replace(r, `<img src="${e.url}" class="emote">`);
+    });
+    return html;
   };
 
   MoonHub.prototype.normalizeMessage = function (platform, user, text, extra) {
-    let html = text;
-
-    if (platform === "kick") {
-      html = this.processKickEmotes(text);
-    }
+    let html = String(text || "");
 
     if (platform === "twitch") {
-      html = this.processTwitchEmotes(text, extra && extra.emotes);
+      html = this.processTwitchNative(html, extra && extra.emotes);
+      html = this.processThirdParty(html);
+    }
+
+    if (platform === "kick") {
+      html = this.processKickEmotes(html);
+      html = this.processThirdParty(html);
     }
 
     return {
-      platform: platform,
+      platform,
       type: "message",
       user: {
         name: user,
         color: (extra && extra.color) || "#fff"
       },
-      content: {
-        text: text,
-        html: html
-      },
+      content: { text, html },
       meta: {
         badges: (extra && extra.badges) || "",
-        emotes: (extra && extra.emotes) || [],
         raw: (extra && extra.raw) || null
       },
       timestamp: Date.now()
@@ -104,27 +96,84 @@
 
   MoonHub.prototype.normalizeAlert = function (platform, name, text, raw) {
     return {
-      platform: platform,
+      platform,
       type: "alert",
-      user: {
-        name: name
-      },
-      content: {
-        text: text
-      },
-      meta: {
-        raw: raw || null
-      },
+      user: { name },
+      content: { text },
+      meta: { raw: raw || null },
       timestamp: Date.now()
     };
   };
 
-  MoonHub.prototype.use = function (plugin) {
-    plugin(this);
+  MoonHub.prototype.load7TV = async function (twitchId) {
+    try {
+      const [c, g] = await Promise.all([
+        fetch(`https://7tv.io/v3/users/twitch/${twitchId}`).then(r => r.json()),
+        fetch(`https://7tv.io/v3/emote-sets/global`).then(r => r.json())
+      ]);
+      [...(c.emote_set?.emotes || []), ...(g.emotes || [])].forEach(e => {
+        const file = e.data.host.files.find(f => f.name.includes("4x"));
+        this.thirdPartyEmotes.push({
+          name: e.name,
+          url: "https:" + e.data.host.url + "/" + file.name
+        });
+      });
+    } catch {}
   };
 
-  MoonHub.prototype.connectTwitch = function (channel) {
+  MoonHub.prototype.loadBTTV = async function (channel) {
+    try {
+      const [c, g] = await Promise.all([
+        fetch(`https://api.betterttv.net/3/cached/users/twitch/${channel}`).then(r => r.json()),
+        fetch(`https://api.betterttv.net/3/cached/emotes/global`).then(r => r.json())
+      ]);
+      [...(c.channelEmotes || []), ...(c.sharedEmotes || []), ...(g || [])].forEach(e => {
+        this.thirdPartyEmotes.push({
+          name: e.code,
+          url: `https://cdn.betterttv.net/emote/${e.id}/3x`
+        });
+      });
+    } catch {}
+  };
+
+  MoonHub.prototype.loadFFZ = async function (channel) {
+    try {
+      const [c, g] = await Promise.all([
+        fetch(`https://api.frankerfacez.com/v1/room/${channel}`).then(r => r.json()),
+        fetch(`https://api.frankerfacez.com/v1/set/global`).then(r => r.json())
+      ]);
+
+      Object.values(c.sets || {}).forEach(set => {
+        set.emoticons.forEach(e => {
+          this.thirdPartyEmotes.push({
+            name: e.name,
+            url: e.urls["4"] || e.urls["2"]
+          });
+        });
+      });
+
+      Object.values(g.sets || {}).forEach(set => {
+        set.emoticons.forEach(e => {
+          this.thirdPartyEmotes.push({
+            name: e.name,
+            url: e.urls["4"] || e.urls["2"]
+          });
+        });
+      });
+    } catch {}
+  };
+
+  MoonHub.prototype.connectTwitch = async function (channel) {
     if (typeof ComfyJS === "undefined") return;
+
+    const userRes = await fetch(`https://api.ivr.fi/v2/twitch/user?login=${channel}`);
+    const user = await userRes.json();
+
+    await Promise.all([
+      this.load7TV(user[0].id),
+      this.loadBTTV(user[0].id),
+      this.loadFFZ(channel)
+    ]);
 
     ComfyJS.Init(channel);
 
@@ -147,129 +196,74 @@
       const event = obj.detail.event;
 
       if (listener === "message") {
-        const data = event.data;
-
-        const normalized = this.normalizeMessage(
-          "youtube",
-          data.displayName,
-          data.text,
-          {
-            color: data.displayColor,
-            badges: data.badges,
-            raw: data
-          }
-        );
-
-        this.emit("message", normalized);
+        const d = event.data;
+        this.emit("message", this.normalizeMessage("youtube", d.displayName, d.text, {
+          color: d.displayColor,
+          raw: d
+        }));
         return;
       }
 
       const type = listener.split("-")[0];
-
       const map = {
         follower: "New Follower",
-        tip: event.amount ? `Tip $${event.amount}` : "Tip",
-        superchat: event.amount ? `Superchat $${event.amount}` : "Superchat",
-        raid: event.amount ? `Raid x${event.amount}` : "Raid",
+        tip: `Tip $${event.amount || ""}`,
+        superchat: `Superchat $${event.amount || ""}`,
+        raid: `Raid x${event.amount || ""}`,
         sponsor: "New Member"
       };
 
       if (map[type]) {
-        const normalized = this.normalizeAlert(
-          "youtube",
-          event.name || "unknown",
-          map[type],
-          event
-        );
-
-        this.emit("alert", normalized);
+        this.emit("alert", this.normalizeAlert("youtube", event.name || "unknown", map[type], event));
       }
     });
   };
 
   MoonHub.prototype.connectKick = function (channel) {
     fetch("https://kick.com/api/v2/channels/" + channel)
-      .then(r => {
-        if (!r.ok) throw new Error("Kick API failed");
-        return r.json();
-      })
+      .then(r => r.json())
       .then(data => {
-        if (!data.chatroom || !data.chatroom.id) {
-          throw new Error("Invalid Kick chatroom");
-        }
+        const id = data.chatroom.id;
 
-        const chatroomId = data.chatroom.id;
-
-        const ws = new WebSocket(
-          "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=7.6.0&flash=false"
-        );
+        const ws = new WebSocket("wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=7.6.0&flash=false");
 
         ws.onopen = () => {
           ws.send(JSON.stringify({
             event: "pusher:subscribe",
-            data: {
-              channel: "chatrooms." + chatroomId + ".v2"
-            }
+            data: { channel: "chatrooms." + id + ".v2" }
           }));
         };
 
-        ws.onmessage = (msg) => {
+        ws.onmessage = (m) => {
           try {
-            const parsed = JSON.parse(msg.data);
-            if (!parsed.data) return;
+            const p = JSON.parse(m.data);
+            if (!p.data) return;
+            const i = JSON.parse(p.data);
 
-            const inner = JSON.parse(parsed.data);
-
-            if (parsed.event === "App\\Events\\ChatMessageEvent") {
-              const normalized = this.normalizeMessage(
-                "kick",
-                inner.sender.username,
-                inner.content,
-                {
-                  color: inner.sender.identity.color,
-                  raw: inner
-                }
-              );
-              this.emit("message", normalized);
+            if (p.event === "App\\Events\\ChatMessageEvent") {
+              this.emit("message", this.normalizeMessage("kick", i.sender.username, i.content, {
+                color: i.sender.identity.color,
+                raw: i
+              }));
             }
 
-            if (parsed.event === "App\\Events\\SubscriptionEvent") {
-              this.emit("alert", this.normalizeAlert(
-                "kick",
-                inner.username,
-                `Sub x${inner.months}`,
-                inner
-              ));
+            if (p.event === "App\\Events\\SubscriptionEvent") {
+              this.emit("alert", this.normalizeAlert("kick", i.username, `Sub x${i.months}`, i));
             }
 
-            if (parsed.event === "App\\Events\\GiftedSubscriptionsEvent") {
-              this.emit("alert", this.normalizeAlert(
-                "kick",
-                inner.gifter_username,
-                `Gifted x${inner.gifted_usernames?.length || 1}`,
-                inner
-              ));
+            if (p.event === "App\\Events\\GiftedSubscriptionsEvent") {
+              this.emit("alert", this.normalizeAlert("kick", i.gifter_username, `Gifted x${i.gifted_usernames?.length || 1}`, i));
             }
 
-          } catch (e) {}
+          } catch {}
         };
 
-        ws.onerror = () => {
-          console.error("MoonHub Kick WS error");
-        };
-
-        ws.onclose = () => {
-          setTimeout(() => this.connectKick(channel), 2000);
-        };
-      })
-      .catch(() => {
-        setTimeout(() => this.connectKick(channel), 3000);
+        ws.onclose = () => setTimeout(() => this.connectKick(channel), 2000);
       });
   };
 
   MoonHub.prototype.inject = function (event) {
-    if (event.type === "message") this.emit("message", event);
-    if (event.type === "alert") this.emit("alert", event);
+    this.emit(event.type, event);
   };
 
   return MoonHub;
