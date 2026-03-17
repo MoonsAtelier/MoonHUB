@@ -30,7 +30,58 @@
     }
   };
 
+  MoonHub.prototype.processKickEmotes = function (text) {
+    if (!text) return text;
+
+    text = text.replace(
+      /\[emote:(\d+):?[^\]]*\]/g,
+      '<img src="https://files.kick.com/emotes/$1/fullsize" class="emote">'
+    );
+
+    text = text.replace(
+      /\[emoji:(\w+)\]/g,
+      '<img src="https://dbxmjjzl5pc1g.cloudfront.net/a984b19b-fb89-450b-b4c3-6e4fadd199c9/images/emojis/$1.png" class="emote">'
+    );
+
+    return text;
+  };
+
+  MoonHub.prototype.processTwitchEmotes = function (text, emotes) {
+    if (!text || !emotes || !Object.keys(emotes).length) return text;
+
+    let msgChars = [...text];
+    let replacements = [];
+
+    Object.entries(emotes).forEach(([id, positions]) => {
+      positions.forEach(p => {
+        let [start, end] = p.split("-");
+        start = parseInt(start);
+        end = parseInt(end);
+        replacements.push([start, end - start + 1, id]);
+      });
+    });
+
+    replacements.sort((a, b) => b[0] - a[0]);
+
+    replacements.forEach(([start, length, id]) => {
+      const html = `<img src="https://static-cdn.jtvnw.net/emoticons/v2/${id}/default/light/1.0" class="emote">`;
+      msgChars.splice(start, length, html);
+    });
+
+    return msgChars.join("");
+  };
+
   MoonHub.prototype.normalizeMessage = function (platform, user, text, extra) {
+    let html = text;
+
+    if (platform === "kick") {
+      html = this.processKickEmotes(text);
+    }
+
+    if (platform === "twitch") {
+      html = this.processTwitchEmotes(text, extra && extra.emotes);
+    }
+
     return {
       platform: platform,
       type: "message",
@@ -40,7 +91,7 @@
       },
       content: {
         text: text,
-        html: text
+        html: html
       },
       meta: {
         badges: (extra && extra.badges) || "",
@@ -82,6 +133,7 @@
 
       const normalized = this.normalizeMessage("twitch", user, message, {
         color: extra.userColor,
+        emotes: extra.messageEmotes,
         raw: extra
       });
 
