@@ -127,11 +127,11 @@
       return {
         listener: "event",
         event: {
-          service: "youtube",
+          provider: "youtube",
           type: role,
           data: {
             displayName: d.displayName || d.name,
-            username: d.name,
+            username: d.username || d.name,
             amount: d.amount || 1,
             message: d.message,
             avatar: d.avatar,
