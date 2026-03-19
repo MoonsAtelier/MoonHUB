@@ -77,7 +77,6 @@
         return;
       }
 
-      // 🔥 LOG RAW WS
       console.log("🟡 RAW WS:", msg);
 
       if (!msg || !msg.topic) return;
@@ -86,7 +85,6 @@
 
       const detail = transform(msg);
 
-      // 🔥 LOG RESULTADO DEL TRANSFORM
       console.log("🟢 TRANSFORM RESULT:", detail);
 
       if (!detail) return;
@@ -129,50 +127,62 @@
     return null;
   }
 
-  // 🔥 FIX CLAVE AQUÍ
+  // 🔥 CHAT FIX REAL (este ya soporta tu raw)
   function transformChatMessage(msg) {
-    // 👇 soporta ambos formatos
     const data = msg.data?.data || msg.data || {};
 
     console.log("🔵 TRANSFORM DATA:", data);
 
-    const username =
-      data.nick ||
-      data.displayName ||
-      "";
-
+    // 👇 DISPLAY NAME (tu caso real)
     const displayName =
       data.displayName ||
-      data.nick ||
+      data.authorDetails?.displayName ||
       "";
 
+    // 👇 USERNAME
+    const username =
+      data.nick ||
+      data.authorDetails?.displayName ||
+      displayName ||
+      "";
+
+    // 👇 USER ID
     const userId =
       data.userId ||
-      data.channel ||
+      data.authorDetails?.channelId ||
       "";
 
+    // 👇 TEXTO (CRÍTICO)
     const text =
       data.text ||
       data.message ||
+      data.snippet?.displayMessage ||
+      data.snippet?.textMessageDetails?.messageText ||
       "";
 
-    if (!displayName || !text) return null;
+    if (!displayName || !text) {
+      console.warn("❌ Message descartado:", { displayName, text });
+      return null;
+    }
 
     return {
       listener: "message",
       event: {
-        provider: data.service || "youtube",
+        provider: "youtube",
         data: {
           nick: username,
           displayName,
           userId,
           msgId: data.msgId || data.id || crypto.randomUUID(),
           text,
-          color: data.displayColor || null,
-          isAction: data.isAction || false,
-          badges: data.badges || [],
-          tags: data.tags || {},
-          avatar: data.avatar || "",
+          color: null,
+          isAction: false,
+          badges: [],
+          tags: {},
+          avatar:
+            data.avatar ||
+            data.authorDetails?.profileImageUrl ||
+            "",
           authorDetails: data.authorDetails || {},
           mh: {
             source: "ws",
