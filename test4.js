@@ -100,7 +100,7 @@
       return {
         listener: "message",
         event: {
-          service: "youtube",
+          provider: "youtube",
           data: {
             displayName: data.author.name,
             nick: data.author.name,
