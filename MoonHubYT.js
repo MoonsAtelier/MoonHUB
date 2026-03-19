@@ -40,7 +40,6 @@
 
     const topics = [
       "channel.chat.message",
-      "channel.activities",
       "channel.session.update"
     ];
 
@@ -112,7 +111,7 @@
       };
     }
 
-    if (msg.topic === "channel.session.update" || msg.topic === "channel.activities") {
+    if (msg.topic === "channel.session.update") {
       const d = data.data;
       if (!d) return null;
 
