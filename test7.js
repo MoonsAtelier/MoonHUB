@@ -101,15 +101,13 @@
         listener: "message",
         event: {
           provider: "youtube",
-          data: {
-            nick: data.author.name,
-            displayName: data.author.name,
-            userId: data.author.id,
-            msgId: data.id,
-            text: data.message || data.content,
-            avatar: data.author.avatar,
-            badges: buildBadges(data.author)
-          }
+          nick: data.author.name,
+          displayName: data.author.name,
+          userId: data.author.id,
+          msgId: data.id,
+          text: data.message || data.content,
+          avatar: data.author.avatar,
+          badges: buildBadges(data.author)
         }
       };
     }
@@ -119,22 +117,22 @@
       if (!d) return null;
 
       const role = mapSessionType(data.name);
+      const eventName = `${role}-latest`;
 
       return {
-        listener: "event",
+        listener: eventName,
         event: {
           _id: data._id || crypto.randomUUID(),
-          name: `${role}-latest`,
+          name: d.name,
           displayName: d.displayName || d.name,
-          provider: "youtube",
           type: role,
-          data: {
-            amount: d.amount ?? 1,
-            message: d.message ?? "",
-            avatar: d.avatar,
-            name: d.name,
-            gifted: d.gifted ?? false
-          }
+          amount: d.amount ?? 1,
+          message: d.message ?? "",
+          avatar: d.avatar,
+          gifted: d.gifted ?? false,
+          originalEventName: eventName,
+          providerId: d.providerId || "",
+          sessionTop: true
         }
       };
     }
@@ -144,22 +142,22 @@
       if (!d) return null;
 
       const role = mapSessionType(data.name);
+      const eventName = `${role}-latest`;
 
       return {
-        listener: "event",
+        listener: eventName,
         event: {
           _id: data._id || crypto.randomUUID(),
-          name: `${role}-latest`,
+          name: d.name,
           displayName: d.displayName || d.name,
-          provider: "youtube",
           type: role,
-          data: {
-            amount: d.amount ?? 1,
-            message: d.message ?? "",
-            avatar: d.avatar,
-            name: d.name,
-            gifted: d.gifted ?? false
-          }
+          amount: d.amount ?? 1,
+          message: d.message ?? "",
+          avatar: d.avatar,
+          gifted: d.gifted ?? false,
+          originalEventName: eventName,
+          providerId: d.providerId || "",
+          sessionTop: true
         }
       };
     }
@@ -182,7 +180,7 @@
     if (name.includes("superchat")) return "superchat";
     if (name.includes("tip")) return "tip";
     if (name.includes("follow")) return "follow";
-    return name;
+    return "unknown";
   }
 
   function disconnect() {
