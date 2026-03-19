@@ -7,15 +7,22 @@
 
   const state = {
     config: {},
-    sockets: [],
-    seen: new Set()
+    sockets: []
   };
+
+  function log(...args) {
+    if (!state.config.debug?.enabled) return;
+    console.log("[MoonHub]", ...args);
+  }
 
   function init(config) {
     state.config = config || {};
+    log("init", state.config);
   }
 
   function connect() {
+    log("connecting...");
+
     if (state.config.youtube?.websocket?.enabled) {
       state.config.youtube.websocket.connections.forEach(c => {
         createWS(c.name, c.token);
@@ -24,6 +31,7 @@
 
     if (state.config.youtube?.overlay?.enabled) {
       window.addEventListener("onEventReceived", handleOverlay);
+      log("overlay listener attached");
     }
   }
 
@@ -37,6 +45,8 @@
     ];
 
     ws.addEventListener("open", () => {
+      log(`WS connected → ${name}`);
+
       topics.forEach(topic => {
         ws.send(JSON.stringify({
           type: "subscribe",
@@ -48,24 +58,42 @@
 
     ws.addEventListener("message", (event) => {
       let msg;
-      try { msg = JSON.parse(event.data); } catch { return; }
+      try { msg = JSON.parse(event.data); } catch {
+        log("invalid JSON", event.data);
+        return;
+      }
+
+      log("WS message", msg.topic);
+
       handleWS(msg);
+    });
+
+    ws.addEventListener("close", () => {
+      log(`WS disconnected → ${name}`);
+    });
+
+    ws.addEventListener("error", (err) => {
+      log(`WS error → ${name}`, err);
     });
 
     state.sockets.push(ws);
   }
 
   function handleOverlay(obj) {
-    dispatch(obj.detail);
+    if (obj.detail?.__moonhub) return;
+    log("overlay event", obj.detail?.listener);
   }
 
   function handleWS(msg) {
     const fake = transform(msg);
     if (!fake) return;
+
+    log("dispatching transformed event", fake.listener, fake.event?.type);
     dispatch(fake);
   }
 
   function dispatch(detail) {
+    detail.__moonhub = true;
     window.dispatchEvent(new CustomEvent("onEventReceived", { detail }));
   }
 
@@ -145,6 +173,7 @@
   function disconnect() {
     state.sockets.forEach(ws => ws.close());
     state.sockets = [];
+    log("disconnected all sockets");
   }
 
   return {
