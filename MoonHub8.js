@@ -123,8 +123,66 @@
     return null;
   }
 
+  // 🔥 FIX AQUÍ (DETECCIÓN REAL + FALLBACK)
   function transformChatMessage(msg) {
     const data = msg.data || {};
+
+    // 🧠 detecta formato overlay (el tuyo real)
+    const isOverlayFormat =
+      data.displayName ||
+      data.nick ||
+      data.text;
+
+    if (isOverlayFormat) {
+      const username =
+        data.nick ||
+        data.displayName ||
+        "";
+
+      const displayName =
+        data.displayName ||
+        data.nick ||
+        "";
+
+      const userId =
+        data.userId ||
+        data.channel ||
+        "";
+
+      const text =
+        data.text ||
+        data.message ||
+        "";
+
+      if (!displayName || !text) return null;
+
+      return {
+        listener: "message",
+        event: {
+          provider: data.service || "youtube",
+          data: {
+            nick: username,
+            displayName,
+            userId,
+            msgId: data.msgId || data.id || crypto.randomUUID(),
+            text,
+            color: data.displayColor || null,
+            isAction: data.isAction || false,
+            badges: data.badges || [],
+            tags: data.tags || {},
+            avatar: data.avatar || "",
+            authorDetails: data.authorDetails || {},
+            mh: {
+              source: "ws",
+              topic: msg.topic,
+              raw: msg
+            }
+          }
+        }
+      };
+    }
+
+    // 🧠 fallback formato antiguo (SE API style)
     const author = data.author || {};
 
     if (!author.name && !author.displayName) return null;
@@ -301,46 +359,15 @@
 
     if (!raw) return null;
 
-    if (
-      raw.includes("superchat") ||
-      raw.includes("super_chat") ||
-      raw.includes("paidmessage") ||
-      raw.includes("paid_message")
-    ) {
-      return "superchat-latest";
-    }
-
-    if (
-      raw.includes("communitygiftpurchase") ||
-      raw.includes("community_gift_purchase") ||
-      raw.includes("giftmembership") ||
-      raw.includes("gift_membership") ||
-      raw.includes("giftsponsor") ||
-      raw.includes("gift_sponsor") ||
-      raw.includes("sponsor")
-    ) {
-      return "sponsor-latest";
-    }
-
-    if (
-      raw.includes("tip") ||
-      raw.includes("donation")
-    ) {
-      return "tip-latest";
-    }
-
-    if (
-      raw.includes("subscriber") ||
-      raw.includes("subscription") ||
-      raw.includes("follow")
-    ) {
-      return "subscriber-latest";
-    }
+    if (raw.includes("superchat")) return "superchat-latest";
+    if (raw.includes("sponsor") || raw.includes("gift")) return "sponsor-latest";
+    if (raw.includes("tip") || raw.includes("donation")) return "tip-latest";
+    if (raw.includes("subscriber") || raw.includes("follow")) return "subscriber-latest";
 
     return null;
   }
 
-  function mapEventType(listener, flags) {
+  function mapEventType(listener) {
     if (listener === "superchat-latest") return "superchat";
     if (listener === "tip-latest") return "tip";
     if (listener === "subscriber-latest") return "follow";
