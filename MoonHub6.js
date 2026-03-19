@@ -26,7 +26,7 @@
 
     if (state.config.youtube?.websocket?.enabled) {
       const connections = state.config.youtube.websocket.connections || [];
-      connections.forEach((c) => createWS(c.name, c.token));
+      connections.forEach((c) => createWS(c.name, c.token, "youtube"));
     }
 
     if (state.config.youtube?.overlay?.enabled && !state.overlayBound) {
@@ -46,7 +46,7 @@
     log("disconnected all");
   }
 
-  function createWS(name, token) {
+  function createWS(name, token, platform = "youtube") {
     const ws = new WebSocket(WS_URL);
 
     const topics = [
@@ -55,7 +55,7 @@
     ];
 
     ws.addEventListener("open", () => {
-      log("WS connected →", name);
+      log("WS connected →", name, platform);
 
       topics.forEach((topic) => {
         ws.send(JSON.stringify({
@@ -80,21 +80,21 @@
 
       if (!msg || !msg.topic) return;
 
-      log("WS message", msg.topic);
+      log("WS message", msg.topic, msg);
 
-      const detail = transform(msg);
+      const detail = transform(msg, platform);
       if (!detail) return;
 
-      log("dispatching", detail.listener);
+      log("dispatching", detail.listener, detail);
       dispatch(detail);
     });
 
     ws.addEventListener("close", () => {
-      log("WS disconnected →", name);
+      log("WS disconnected →", name, platform);
     });
 
     ws.addEventListener("error", (err) => {
-      log("WS error →", name, err);
+      log("WS error →", name, platform, err);
     });
 
     state.sockets.push(ws);
@@ -111,52 +111,57 @@
     window.dispatchEvent(ev);
   }
 
-  function transform(msg) {
+  function transform(msg, platform = "youtube") {
     if (msg.topic === "channel.chat.message") {
-      return transformChatMessage(msg);
+      return transformChatMessage(msg, platform);
     }
 
     if (msg.topic === "channel.session.update") {
-      return transformSessionUpdate(msg);
+      return transformSessionUpdate(msg, platform);
     }
 
     return null;
   }
 
-  function transformChatMessage(msg) {
+  function transformChatMessage(msg, platform = "youtube") {
     const data = msg.data || {};
     const author = data.author || {};
 
-    if (!author.name && !author.displayName) return null;
+    if (!author.name && !author.displayName && !author.username) return null;
 
-    const username =
-      author.name ||
-      author.username ||
-      "";
+    const username = pickFirst([
+      author.name,
+      author.username,
+      author.login,
+      author.displayName
+    ]);
 
-    const displayName =
-      author.displayName ||
-      author.name ||
-      author.username ||
-      "";
+    const displayName = pickFirst([
+      author.displayName,
+      author.name,
+      author.username,
+      author.login
+    ]);
 
-    const userId =
-      author.id ||
-      author.channelId ||
-      author.providerId ||
-      author.userId ||
-      "";
+    const userId = pickFirst([
+      author.id,
+      author.channelId,
+      author.providerId,
+      author.userId
+    ]);
 
-    const text =
-      data.message ||
-      data.content ||
-      data.text ||
-      "";
+    const text = pickFirst([
+      data.message,
+      data.content,
+      data.text
+    ]);
 
     return {
       listener: "message",
       event: {
-        provider: "youtube",
+        service: platform,
+        provider: platform,
+        platform,
         data: {
           nick: username,
           displayName,
@@ -185,11 +190,11 @@
     };
   }
 
-  function transformSessionUpdate(msg) {
+  function transformSessionUpdate(msg, platform = "youtube") {
     const data = msg.data || {};
     const payload = data.data || {};
 
-    const listener = mapListener(data, payload);
+    const listener = mapListener(data, payload, platform);
     if (!listener) return null;
 
     const username = pickFirst([
@@ -221,8 +226,12 @@
     const message = pickFirst([
       payload.message,
       payload.text,
-      payload.comment,
-      ""
+      payload.comment
+    ]);
+
+    const avatar = pickFirst([
+      payload.avatar,
+      data.avatar
     ]);
 
     const isGift =
@@ -238,56 +247,84 @@
       Number(payload.giftCount || 0) > 1 ||
       Number(payload.quantity || 0) > 1;
 
-    const eventId =
-      data._id ||
-      payload._id ||
-      payload.id ||
-      crypto.randomUUID();
+    const eventId = pickFirst([
+      data._id,
+      payload._id,
+      payload.id
+    ]) || crypto.randomUUID();
 
     const eventType = mapEventType(listener, {
       isGift,
       bulkGifted
     });
 
+    const event = {
+      service: platform,
+      provider: platform,
+      platform,
+      _id: eventId,
+      msgId: eventId,
+      type: eventType,
+      name: username || "",
+      displayName: displayName || "",
+      amount,
+      avatar: avatar || "",
+      originalEventName: listener,
+      providerId: providerId || "",
+      sessionTop: data.sessionTop ?? payload.sessionTop ?? false
+    };
+
+    if (message) {
+      event.message = message;
+    }
+
+    if (isGift) {
+      event.gift = true;
+      event.gifted = true;
+    }
+
+    if (bulkGifted) {
+      event.bulkGifted = true;
+    }
+
+    event.data = {
+      service: platform,
+      provider: platform,
+      platform,
+      name: username || "",
+      username: username || "",
+      displayName: displayName || "",
+      amount,
+      avatar: avatar || "",
+      providerId: providerId || ""
+    };
+
+    if (message) {
+      event.data.message = message;
+    }
+
+    if (isGift) {
+      event.data.gifted = true;
+    }
+
+    if (bulkGifted) {
+      event.data.bulkGifted = true;
+    }
+
+    event.mh = {
+      source: "ws",
+      platform,
+      topic: msg.topic,
+      raw: msg
+    };
+
     return {
       listener,
-      event: {
-        _id: eventId,
-        msgId: eventId,
-        type: eventType,
-        name: username || "",
-        displayName: displayName || "",
-        amount,
-        message,
-        avatar: payload.avatar || "",
-        originalEventName: listener,
-        providerId: providerId || "",
-        sessionTop: data.sessionTop ?? payload.sessionTop ?? false,
-        gift: isGift,
-        gifted: isGift,
-        bulkGifted,
-        data: {
-          name: username || "",
-          username: username || "",
-          displayName: displayName || "",
-          amount,
-          message,
-          avatar: payload.avatar || "",
-          gifted: isGift,
-          bulkGifted,
-          providerId: providerId || ""
-        },
-        mh: {
-          source: "ws",
-          platform: "youtube",
-          topic: msg.topic,
-          raw: msg
-        }
-      }
+      event
     };
   }
 
-  function mapListener(data, payload) {
+  function mapListener(data, payload, platform = "youtube") {
     const raw = String(
       data.name ||
       data.event ||
@@ -300,40 +337,42 @@
 
     if (!raw) return null;
 
-    if (
-      raw.includes("superchat") ||
-      raw.includes("super_chat") ||
-      raw.includes("paidmessage") ||
-      raw.includes("paid_message")
-    ) {
-      return "superchat-latest";
-    }
+    if (platform === "youtube") {
+      if (
+        raw.includes("superchat") ||
+        raw.includes("super_chat") ||
+        raw.includes("paidmessage") ||
+        raw.includes("paid_message")
+      ) {
+        return "superchat-latest";
+      }
 
-    if (
-      raw.includes("communitygiftpurchase") ||
-      raw.includes("community_gift_purchase") ||
-      raw.includes("giftmembership") ||
-      raw.includes("gift_membership") ||
-      raw.includes("giftsponsor") ||
-      raw.includes("gift_sponsor") ||
-      raw.includes("sponsor")
-    ) {
-      return "sponsor-latest";
-    }
+      if (
+        raw.includes("communitygiftpurchase") ||
+        raw.includes("community_gift_purchase") ||
+        raw.includes("giftmembership") ||
+        raw.includes("gift_membership") ||
+        raw.includes("giftsponsor") ||
+        raw.includes("gift_sponsor") ||
+        raw.includes("sponsor")
+      ) {
+        return "sponsor-latest";
+      }
 
-    if (
-      raw.includes("tip") ||
-      raw.includes("donation")
-    ) {
-      return "tip-latest";
-    }
+      if (
+        raw.includes("tip") ||
+        raw.includes("donation")
+      ) {
+        return "tip-latest";
+      }
 
-    if (
-      raw.includes("subscriber") ||
-      raw.includes("subscription") ||
-      raw.includes("follow")
-    ) {
-      return "subscriber-latest";
+      if (
+        raw.includes("subscriber") ||
+        raw.includes("subscription") ||
+        raw.includes("follow")
+      ) {
+        return "subscriber-latest";
+      }
     }
 
     return null;
@@ -343,7 +382,11 @@
     if (listener === "superchat-latest") return "superchat";
     if (listener === "tip-latest") return "tip";
     if (listener === "subscriber-latest") return "follow";
-    if (listener === "sponsor-latest") return "sponsor";
+    if (listener === "sponsor-latest") {
+      if (flags?.bulkGifted) return "sponsor";
+      if (flags?.isGift) return "sponsor";
+      return "sponsor";
+    }
     return "unknown";
   }
 
@@ -352,6 +395,15 @@
     if (payload.count != null) return payload.count;
     if (payload.quantity != null) return payload.quantity;
     if (payload.giftCount != null) return payload.giftCount;
+
+    if (payload.amountMicros != null && !Number.isNaN(Number(payload.amountMicros))) {
+      return Number(payload.amountMicros) / 1_000_000;
+    }
+
+    if (payload.amountCents != null && !Number.isNaN(Number(payload.amountCents))) {
+      return Number(payload.amountCents) / 100;
+    }
+
     if (listener === "sponsor-latest") return 1;
     if (listener === "subscriber-latest") return 1;
     return 1;
