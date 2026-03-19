@@ -63,8 +63,9 @@
         return;
       }
 
-      log("WS message", msg.topic);
+      if (!msg.topic) return;
 
+      log("WS message", msg.topic);
       handleWS(msg);
     });
 
@@ -88,7 +89,7 @@
     const fake = transform(msg);
     if (!fake) return;
 
-    log("dispatching transformed event", fake.listener, fake.event?.type);
+    log("dispatching", fake.listener, fake.event?.type);
     dispatch(fake);
   }
 
@@ -100,6 +101,7 @@
   function transform(msg) {
     const data = msg.data || {};
 
+    // 💬 CHAT
     if (msg.topic === "channel.chat.message") {
       if (!data.author?.name) return null;
 
@@ -120,16 +122,19 @@
       };
     }
 
+    // 🚨 ALERTS
     if (msg.topic === "channel.activities") {
+      const role = mapType(data);
+
       return {
         listener: "event",
         event: {
           service: "youtube",
-          type: mapType(data),
+          type: role,
           data: {
             displayName: data.displayName || data.username,
             username: data.username,
-            amount: data.amount,
+            amount: data.amount || 1,
             sender: data.sender,
             gifted: data.gifted,
             avatar: data.avatar
@@ -138,14 +143,9 @@
       };
     }
 
+    // ⚙️ SESSION (ignorado para UI)
     if (msg.topic === "channel.session.update") {
-      return {
-        listener: "session",
-        event: {
-          service: "youtube",
-          data
-        }
-      };
+      return null;
     }
 
     return null;
@@ -153,27 +153,44 @@
 
   function buildBadges(a) {
     const b = [];
+
     if (a.isChatOwner) b.push({ type: "broadcaster" });
     if (a.isChatModerator) b.push({ type: "moderator" });
     if (a.isChatSponsor) b.push({ type: "subscriber" });
     if (a.isVerified) b.push({ type: "verified" });
+
     return b;
   }
 
   function mapType(d) {
-    if (d.type === "subscriber" || d.type === "sponsor") {
-      return d.gifted ? "gifted-sub" : "sub";
+    if (!d?.type) return "unknown";
+
+    switch (d.type) {
+      case "subscriber":
+      case "sponsor":
+        return d.gifted ? "gifted-sub" : "sub";
+
+      case "communityGiftPurchase":
+        return "gift-subs";
+
+      case "superchat":
+        return "superchat";
+
+      case "tip":
+        return "tip";
+
+      case "follow":
+        return "follow";
+
+      default:
+        return d.type;
     }
-    if (d.type === "communityGiftPurchase") return "gift-subs";
-    if (d.type === "superchat") return "superchat";
-    if (d.type === "tip") return "tip";
-    return d.type || "unknown";
   }
 
   function disconnect() {
     state.sockets.forEach(ws => ws.close());
     state.sockets = [];
-    log("disconnected all sockets");
+    log("disconnected all");
   }
 
   return {
