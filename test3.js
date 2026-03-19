@@ -10,9 +10,9 @@
     sockets: []
   };
 
-  function log(...args) {
+  function log() {
     if (!state.config.debug?.enabled) return;
-    console.log("[MoonHub]", ...args);
+    console.log("[MoonHub]", ...arguments);
   }
 
   function init(config) {
@@ -45,7 +45,7 @@
     ];
 
     ws.addEventListener("open", () => {
-      log(`WS connected → ${name}`);
+      log("WS connected →", name);
 
       topics.forEach(topic => {
         ws.send(JSON.stringify({
@@ -58,23 +58,18 @@
 
     ws.addEventListener("message", (event) => {
       let msg;
-      try { msg = JSON.parse(event.data); } catch {
-        log("invalid JSON", event.data);
-        return;
-      }
-
+      try { msg = JSON.parse(event.data); } catch { return; }
       if (!msg.topic) return;
-
       log("WS message", msg.topic);
       handleWS(msg);
     });
 
     ws.addEventListener("close", () => {
-      log(`WS disconnected → ${name}`);
+      log("WS disconnected →", name);
     });
 
     ws.addEventListener("error", (err) => {
-      log(`WS error → ${name}`, err);
+      log("WS error →", name, err);
     });
 
     state.sockets.push(ws);
@@ -82,13 +77,11 @@
 
   function handleOverlay(obj) {
     if (obj.detail?.__moonhub) return;
-    log("overlay event", obj.detail?.listener);
   }
 
   function handleWS(msg) {
     const fake = transform(msg);
     if (!fake) return;
-
     log("dispatching", fake.listener, fake.event?.type);
     dispatch(fake);
   }
@@ -101,7 +94,6 @@
   function transform(msg) {
     const data = msg.data || {};
 
-    // 💬 CHAT
     if (msg.topic === "channel.chat.message") {
       if (!data.author?.name) return null;
 
@@ -122,9 +114,15 @@
       };
     }
 
-    // 🚨 ALERTS
     if (msg.topic === "channel.activities") {
-      const role = mapType(data);
+      return null;
+    }
+
+    if (msg.topic === "channel.session.update") {
+      const d = data.data;
+      if (!d) return null;
+
+      const role = mapSessionType(data.name);
 
       return {
         listener: "event",
@@ -132,20 +130,15 @@
           service: "youtube",
           type: role,
           data: {
-            displayName: data.displayName || data.username,
-            username: data.username,
-            amount: data.amount || 1,
-            sender: data.sender,
-            gifted: data.gifted,
-            avatar: data.avatar
+            displayName: d.displayName || d.name,
+            username: d.name,
+            amount: d.amount || 1,
+            message: d.message,
+            avatar: d.avatar,
+            gifted: d.gifted
           }
         }
       };
-    }
-
-    // ⚙️ SESSION (ignorado para UI)
-    if (msg.topic === "channel.session.update") {
-      return null;
     }
 
     return null;
@@ -153,38 +146,19 @@
 
   function buildBadges(a) {
     const b = [];
-
     if (a.isChatOwner) b.push({ type: "broadcaster" });
     if (a.isChatModerator) b.push({ type: "moderator" });
     if (a.isChatSponsor) b.push({ type: "subscriber" });
     if (a.isVerified) b.push({ type: "verified" });
-
     return b;
   }
 
-  function mapType(d) {
-    if (!d?.type) return "unknown";
-
-    switch (d.type) {
-      case "subscriber":
-      case "sponsor":
-        return d.gifted ? "gifted-sub" : "sub";
-
-      case "communityGiftPurchase":
-        return "gift-subs";
-
-      case "superchat":
-        return "superchat";
-
-      case "tip":
-        return "tip";
-
-      case "follow":
-        return "follow";
-
-      default:
-        return d.type;
-    }
+  function mapSessionType(name) {
+    if (!name) return "unknown";
+    if (name.includes("subscriber")) return "sub";
+    if (name.includes("superchat")) return "superchat";
+    if (name.includes("tip")) return "tip";
+    return name;
   }
 
   function disconnect() {
