@@ -16,6 +16,11 @@
     console.log("[MoonHub]", ...arguments);
   }
 
+  function wsLog() {
+    if (!state.config.debug?.enabled) return;
+    console.log("[WSmoon]", ...arguments);
+  }
+
   function init(config) {
     state.config = config || {};
     log("init", state.config);
@@ -69,27 +74,37 @@
     });
 
     ws.addEventListener("message", (event) => {
+      wsLog("📥 RAW STRING:", event.data);
+
       let msg;
 
       try {
         msg = JSON.parse(event.data);
-      } catch {
+      } catch (err) {
+        wsLog("❌ JSON PARSE ERROR:", err);
         return;
       }
 
-      console.log("🟡 RAW WS:", msg);
+      wsLog("📦 PARSED:", msg);
 
-      if (!msg || !msg.topic) return;
+      if (!msg || !msg.topic) {
+        wsLog("⚠️ IGNORE: no topic");
+        return;
+      }
 
-      log("WS message", msg.topic);
+      wsLog("📡 TOPIC:", msg.topic);
 
       const detail = transform(msg);
 
-      console.log("🟢 TRANSFORM RESULT:", detail);
+      wsLog("🔧 TRANSFORM RESULT:", detail);
 
-      if (!detail) return;
+      if (!detail) {
+        wsLog("⚠️ TRANSFORM NULL (descartado)");
+        return;
+      }
 
-      log("dispatching", detail.listener);
+      wsLog("🚀 DISPATCHING:", detail.listener, detail);
+
       dispatch(detail);
     });
 
@@ -98,6 +113,7 @@
     });
 
     ws.addEventListener("error", (err) => {
+      wsLog("🔥 WS ERROR:", err);
       log("WS error →", name, err);
     });
 
@@ -111,11 +127,15 @@
   function dispatch(detail) {
     detail.__moonhub = true;
     const ev = new CustomEvent("onEventReceived", { detail });
-    log("lib:", ev);
+
+    wsLog("📤 EVENT EMITTED:", ev);
+
     window.dispatchEvent(ev);
   }
 
   function transform(msg) {
+    wsLog("🔍 TRANSFORM ENTRY:", msg.topic);
+
     if (msg.topic === "channel.chat.message") {
       return transformChatMessage(msg);
     }
@@ -124,35 +144,31 @@
       return transformSessionUpdate(msg);
     }
 
+    wsLog("⚠️ UNKNOWN TOPIC:", msg.topic);
     return null;
   }
 
-  // 🔥 CHAT FIX REAL (este ya soporta tu raw)
   function transformChatMessage(msg) {
     const data = msg.data?.data || msg.data || {};
 
-    console.log("🔵 TRANSFORM DATA:", data);
+    wsLog("💬 CHAT DATA:", data);
 
-    // 👇 DISPLAY NAME (tu caso real)
     const displayName =
       data.displayName ||
       data.authorDetails?.displayName ||
       "";
 
-    // 👇 USERNAME
     const username =
       data.nick ||
       data.authorDetails?.displayName ||
       displayName ||
       "";
 
-    // 👇 USER ID
     const userId =
       data.userId ||
       data.authorDetails?.channelId ||
       "";
 
-    // 👇 TEXTO (CRÍTICO)
     const text =
       data.text ||
       data.message ||
@@ -161,11 +177,11 @@
       "";
 
     if (!displayName || !text) {
-      console.warn("❌ Message descartado:", { displayName, text });
+      wsLog("❌ CHAT DESCARTADO:", { displayName, text, data });
       return null;
     }
 
-    return {
+    const result = {
       listener: "message",
       event: {
         provider: "youtube",
@@ -192,14 +208,24 @@
         }
       }
     };
+
+    wsLog("✅ CHAT TRANSFORM OK:", result);
+
+    return result;
   }
 
   function transformSessionUpdate(msg) {
     const data = msg.data || {};
     const payload = data.data || {};
 
+    wsLog("🎯 SESSION RAW:", { data, payload });
+
     const listener = mapListener(data, payload);
-    if (!listener) return null;
+
+    if (!listener) {
+      wsLog("❌ SESSION IGNORADA: no listener match", { data, payload });
+      return null;
+    }
 
     const username = pickFirst([
       payload.name,
@@ -256,7 +282,7 @@
 
     const eventType = mapEventType(listener);
 
-    return {
+    const result = {
       listener,
       event: {
         provider: "youtube",
@@ -293,6 +319,10 @@
         }
       }
     };
+
+    wsLog("✅ SESSION TRANSFORM OK:", result);
+
+    return result;
   }
 
   function mapListener(data, payload) {
@@ -305,6 +335,8 @@
       payload.event ||
       ""
     ).toLowerCase();
+
+    wsLog("🧠 MAP LISTENER RAW:", raw);
 
     if (!raw) return null;
 
