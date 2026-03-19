@@ -38,9 +38,7 @@
 
   function disconnect() {
     state.sockets.forEach((ws) => {
-      try {
-        ws.close();
-      } catch {}
+      try { ws.close(); } catch {}
     });
     state.sockets = [];
     log("disconnected all");
@@ -72,17 +70,25 @@
 
     ws.addEventListener("message", (event) => {
       let msg;
+
       try {
         msg = JSON.parse(event.data);
       } catch {
         return;
       }
 
+      // 🔥 LOG RAW WS
+      console.log("🟡 RAW WS:", msg);
+
       if (!msg || !msg.topic) return;
 
       log("WS message", msg.topic);
 
       const detail = transform(msg);
+
+      // 🔥 LOG RESULTADO DEL TRANSFORM
+      console.log("🟢 TRANSFORM RESULT:", detail);
+
       if (!detail) return;
 
       log("dispatching", detail.listener);
@@ -123,116 +129,51 @@
     return null;
   }
 
-  // 🔥 FIX AQUÍ (DETECCIÓN REAL + FALLBACK)
+  // 🔥 FIX CLAVE AQUÍ
   function transformChatMessage(msg) {
-    const data = msg.data || {};
+    // 👇 soporta ambos formatos
+    const data = msg.data?.data || msg.data || {};
 
-    // 🧠 detecta formato overlay (el tuyo real)
-    const isOverlayFormat =
-      data.displayName ||
-      data.nick ||
-      data.text;
-
-    if (isOverlayFormat) {
-      const username =
-        data.nick ||
-        data.displayName ||
-        "";
-
-      const displayName =
-        data.displayName ||
-        data.nick ||
-        "";
-
-      const userId =
-        data.userId ||
-        data.channel ||
-        "";
-
-      const text =
-        data.text ||
-        data.message ||
-        "";
-
-      if (!displayName || !text) return null;
-
-      return {
-        listener: "message",
-        event: {
-          provider: data.service || "youtube",
-          data: {
-            nick: username,
-            displayName,
-            userId,
-            msgId: data.msgId || data.id || crypto.randomUUID(),
-            text,
-            color: data.displayColor || null,
-            isAction: data.isAction || false,
-            badges: data.badges || [],
-            tags: data.tags || {},
-            avatar: data.avatar || "",
-            authorDetails: data.authorDetails || {},
-            mh: {
-              source: "ws",
-              topic: msg.topic,
-              raw: msg
-            }
-          }
-        }
-      };
-    }
-
-    // 🧠 fallback formato antiguo (SE API style)
-    const author = data.author || {};
-
-    if (!author.name && !author.displayName) return null;
+    console.log("🔵 TRANSFORM DATA:", data);
 
     const username =
-      author.name ||
-      author.username ||
+      data.nick ||
+      data.displayName ||
       "";
 
     const displayName =
-      author.displayName ||
-      author.name ||
-      author.username ||
+      data.displayName ||
+      data.nick ||
       "";
 
     const userId =
-      author.id ||
-      author.channelId ||
-      author.providerId ||
-      author.userId ||
+      data.userId ||
+      data.channel ||
       "";
 
     const text =
-      data.message ||
-      data.content ||
       data.text ||
+      data.message ||
       "";
+
+    if (!displayName || !text) return null;
 
     return {
       listener: "message",
       event: {
-        provider: "youtube",
+        provider: data.service || "youtube",
         data: {
           nick: username,
           displayName,
           userId,
-          msgId: data.id || crypto.randomUUID(),
+          msgId: data.msgId || data.id || crypto.randomUUID(),
           text,
-          color: null,
-          isAction: false,
-          badges: [],
-          tags: {},
-          avatar: author.avatar || "",
-          authorDetails: {
-            displayName,
-            isChatOwner: !!author.isChatOwner,
-            isChatModerator: !!author.isChatModerator,
-            isChatSponsor: !!author.isChatSponsor,
-            isVerified: !!author.isVerified
-          },
+          color: data.displayColor || null,
+          isAction: data.isAction || false,
+          badges: data.badges || [],
+          tags: data.tags || {},
+          avatar: data.avatar || "",
+          authorDetails: data.authorDetails || {},
           mh: {
             source: "ws",
             topic: msg.topic,
@@ -276,6 +217,7 @@
     ]);
 
     const amount = pickAmount(payload, listener);
+
     const message = pickFirst([
       payload.message,
       payload.text,
@@ -302,10 +244,7 @@
       payload.id ||
       crypto.randomUUID();
 
-    const eventType = mapEventType(listener, {
-      isGift,
-      bulkGifted
-    });
+    const eventType = mapEventType(listener);
 
     return {
       listener,
