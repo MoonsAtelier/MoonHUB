@@ -102,8 +102,8 @@
         event: {
           provider: "youtube",
           data: {
-            displayName: data.author.name,
             nick: data.author.name,
+            displayName: data.author.name,
             userId: data.author.id,
             msgId: data.id,
             text: data.message || data.content,
@@ -112,10 +112,6 @@
           }
         }
       };
-    }
-
-    if (msg.topic === "channel.activities") {
-      return null;
     }
 
     if (msg.topic === "channel.session.update") {
@@ -127,15 +123,42 @@
       return {
         listener: "event",
         event: {
+          _id: data._id || crypto.randomUUID(),
+          name: `${role}-latest`,
+          displayName: d.displayName || d.name,
           provider: "youtube",
           type: role,
           data: {
-            displayName: d.displayName || d.name,
-            username: d.username || d.name,
-            amount: d.amount || 1,
-            message: d.message,
+            amount: d.amount ?? 1,
+            message: d.message ?? "",
             avatar: d.avatar,
-            gifted: d.gifted
+            name: d.name,
+            gifted: d.gifted ?? false
+          }
+        }
+      };
+    }
+
+    if (msg.topic === "channel.activities") {
+      const d = data.data;
+      if (!d) return null;
+
+      const role = mapSessionType(data.name);
+
+      return {
+        listener: "event",
+        event: {
+          _id: data._id || crypto.randomUUID(),
+          name: `${role}-latest`,
+          displayName: d.displayName || d.name,
+          provider: "youtube",
+          type: role,
+          data: {
+            amount: d.amount ?? 1,
+            message: d.message ?? "",
+            avatar: d.avatar,
+            name: d.name,
+            gifted: d.gifted ?? false
           }
         }
       };
@@ -158,6 +181,7 @@
     if (name.includes("subscriber")) return "sub";
     if (name.includes("superchat")) return "superchat";
     if (name.includes("tip")) return "tip";
+    if (name.includes("follow")) return "follow";
     return name;
   }
 
