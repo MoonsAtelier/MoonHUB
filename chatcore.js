@@ -607,8 +607,18 @@
         handle(msg) {
             if (!msg || !msg.topic) return;
 
-            if (msg.topic === "channel.chat.message") return this.handleChat(msg);
-            if (msg.topic === "channel.activities") return this.handleAlert(msg);
+            console.log("%c[WS DEBUG]%c Topic:", "background:#9146ff;color:#fff;padding:2px 6px", "color:#38bdf8", msg.topic);
+            console.log("%c[WS DEBUG]%c Full message:", "background:#9146ff;color:#fff;padding:2px 6px", "color:#fbbf24", msg);
+        
+            if (msg.topic === "channel.chat.message") {
+                console.log("%c[WS DEBUG]%c Chat message data:", "background:#9146ff;color:#fff;padding:2px 6px", "color:#22c55e", msg.data);
+                return this.handleChat(msg);
+            }
+            
+            if (msg.topic === "channel.activities") {
+                console.log("%c[WS DEBUG]%c Activity data:", "background:#9146ff;color:#fff;padding:2px 6px", "color:#f59e0b", msg.data);
+                return this.handleAlert(msg);
+            }
         }
 
         connect() {
