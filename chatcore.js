@@ -435,26 +435,34 @@
         parseFragments(fragments) {
             const emotes = [];
             let pos = 0;
-
+        
             fragments.forEach(frag => {
                 if (frag.type === "emote" && frag.emote) {
-                    const isAnimated = frag.emote.format && frag.emote.format.includes("animated");
+                    // Detectar si el emote tiene versión animada
+                    const formats = frag.emote.format || [];
+                    const hasAnimated = formats.includes("animated");
+                    const hasStatic = formats.includes("static");
+                    
+                    // Prioridad: animated > static
+                    const urlType = hasAnimated ? "animated" : "static";
+                    
                     emotes.push({
                         type: "twitch",
                         name: frag.text,
                         id: frag.emote.id,
                         start: pos,
                         end: pos + frag.text.length - 1,
+                        animated: hasAnimated,
                         urls: {
-                            "1": `https://static-cdn.jtvnw.net/emoticons/v2/${frag.emote.id}/static/dark/1.0`,
-                            "2": `https://static-cdn.jtvnw.net/emoticons/v2/${frag.emote.id}/static/dark/2.0`,
-                            "4": `https://static-cdn.jtvnw.net/emoticons/v2/${frag.emote.id}/static/dark/3.0`
+                            "1": `https://static-cdn.jtvnw.net/emoticons/v2/${frag.emote.id}/${urlType}/dark/1.0`,
+                            "2": `https://static-cdn.jtvnw.net/emoticons/v2/${frag.emote.id}/${urlType}/dark/2.0`,
+                            "4": `https://static-cdn.jtvnw.net/emoticons/v2/${frag.emote.id}/${urlType}/dark/3.0`
                         }
                     });
                 }
                 pos += frag.text.length;
             });
-
+        
             return emotes;
         }
 
