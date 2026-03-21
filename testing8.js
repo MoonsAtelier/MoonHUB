@@ -262,7 +262,7 @@
                 if (listener === "subscriber-latest") return "follow";
                 return null;
             }
-
+        
             if (listener === "subscriber-latest") {
                 if (ev.bulkGifted) return "gift-subs";
                 if (ev.gifted) return "gifted-sub";
@@ -272,6 +272,7 @@
             if (listener === "raid-latest") return "raid";
             if (listener === "tip-latest") return "tip";
             if (listener === "follower-latest") return "follow";
+            if (listener === "channel-points-latest") return "points";
             if (listener === "event" && ev.type === "channelPointsRedemption") return "points";
             return null;
         }
