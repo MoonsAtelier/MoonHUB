@@ -589,99 +589,68 @@
             this.log("info", "WS RAW ALERT →", msg);
             
             const d = msg.data;
-            
-            if (!d) {
-                this.log("warn", "Alert sin data →", msg);
-                return;
-            }
+            if (!d) return;
 
-            const eventType = d.type;
-            
-            if (eventType === "channelPointsRedemption") {
-                this.dispatch("event", {
-                    ...d.data,
-                    type: eventType,
-                    provider: "twitch"
-                });
-                return;
-            }
-
-            const userData = d.data || {};
-            
             const base = {
-                name: userData.username || userData.displayName || userData.name || "Unknown",
-                displayName: userData.displayName || userData.username || userData.name || "Unknown",
-                providerId: userData.providerId || "",
-                avatar: userData.avatar || "",
-                _id: d._id || d.activityId || msg.id || "",
+                name: d.username || d.displayName,
+                displayName: d.displayName || d.username,
+                providerId: d.providerId,
+                avatar: d.avatar || "",
+                _id: msg._id,
                 sessionTop: false,
-                type: eventType,
-                originalEventName: `${eventType}-latest`
+                type: msg.type,
+                originalEventName: `${msg.type}-latest`
             };
 
             const eventData = {
                 data: base,
-                service: "twitch",
-                provider: "twitch"
+                service: "twitch"
             };
 
-            switch(eventType) {
-                case "follow":
-                    eventData.data.activityId = d.activityId;
-                    this.log("ok", "Dispatching follower-latest", eventData);
-                    this.dispatch("follower-latest", eventData);
-                    break;
+            if (msg.type === "follow") {
+                eventData.data.activityId = msg.activityId;
+                this.dispatch("follower-latest", eventData);
+            }
 
-                case "subscriber":
-                    eventData.data = {
-                        ...base,
-                        amount: userData.amount || 1,
-                        tier: userData.tier || "1000",
-                        message: userData.message || ""
-                    };
-                    if (userData.gifted) {
-                        eventData.data.sender = userData.sender || base.name;
-                        eventData.data.gifted = true;
-                    }
-                    this.log("ok", "Dispatching subscriber-latest", eventData);
-                    this.dispatch("subscriber-latest", eventData);
-                    break;
+            if (msg.type === "subscriber") {
+                eventData.data = {
+                    ...base,
+                    amount: d.amount || 1,
+                    tier: d.tier || "1000",
+                    message: d.message || ""
+                };
+                if (d.gifted) {
+                    eventData.data.sender = d.sender || base.name;
+                    eventData.data.gifted = true;
+                }
+                this.dispatch("subscriber-latest", eventData);
+            }
 
-                case "communityGiftPurchase":
-                    eventData.data = {
-                        ...base,
-                        sender: base.name,
-                        amount: userData.amount || 0,
-                        bulkGifted: true,
-                        tier: userData.tier || "1000",
-                        message: ""
-                    };
-                    this.log("ok", "Dispatching communityGift", eventData);
-                    this.dispatch("subscriber-latest", eventData);
-                    break;
+            if (msg.type === "communityGiftPurchase") {
+                eventData.data = {
+                    ...base,
+                    sender: base.name,
+                    amount: d.amount || 0,
+                    bulkGifted: true,
+                    message: ""
+                };
+                this.dispatch("subscriber-latest", eventData);
+            }
 
-                case "tip":
-                    eventData.data.amount = userData.amount || 0;
-                    eventData.data.message = userData.message || "";
-                    this.log("ok", "Dispatching tip-latest", eventData);
-                    this.dispatch("tip-latest", eventData);
-                    break;
+            if (msg.type === "tip") {
+                eventData.data.amount = d.amount || 0;
+                this.dispatch("tip-latest", eventData);
+            }
 
-                case "cheer":
-                    eventData.data.amount = userData.amount || 0;
-                    eventData.data.message = userData.message || "";
-                    this.log("ok", "Dispatching cheer-latest", eventData);
-                    this.dispatch("cheer-latest", eventData);
-                    break;
+            if (msg.type === "cheer") {
+                eventData.data.amount = d.amount || 0;
+                eventData.data.message = d.message || "";
+                this.dispatch("cheer-latest", eventData);
+            }
 
-                case "raid":
-                    eventData.data.amount = userData.amount || 0;
-                    this.log("ok", "Dispatching raid-latest", eventData);
-                    this.dispatch("raid-latest", eventData);
-                    break;
-
-                default:
-                    this.log("warn", "Tipo de alerta desconocido →", eventType, msg);
+            if (msg.type === "raid") {
+                eventData.data.amount = d.amount || 0;
+                this.dispatch("raid-latest", eventData);
             }
         }
 
@@ -695,7 +664,7 @@
 
             const sessionData = d.data || {};
 
-            const eventData = {
+            this.dispatch(d.name, {
                 avatar: sessionData.avatar || "",
                 displayName: sessionData.displayName || sessionData.name || "",
                 name: sessionData.name || "",
@@ -703,18 +672,10 @@
                 providerId: sessionData.providerId || "",
                 sessionTop: false,
                 type: d.name.replace("-latest", ""),
-                _id: d.activityId || msg.id || ""
-            };
-
-            if (sessionData.amount !== undefined) {
-                eventData.amount = sessionData.amount;
-            }
-            if (sessionData.message !== undefined) {
-                eventData.message = sessionData.message;
-            }
-
-            this.log("ok", "Dispatching session →", d.name, eventData);
-            this.dispatch(d.name, { data: eventData, service: "twitch", provider: "twitch" });
+                _id: d.activityId || "",
+                ...(sessionData.amount !== undefined && { amount: sessionData.amount }),
+                ...(sessionData.message !== undefined && { message: sessionData.message })
+            });
         }
 
         handle(msg) {
