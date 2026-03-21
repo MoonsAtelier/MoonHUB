@@ -9,7 +9,6 @@
 }(typeof self !== 'undefined' ? self : this, function () {
     'use strict';
 
-    // UTILITIES
     const Utils = {
         htmlEncode(text) {
             return text.replace(/[<>"^]/g, (e) => `&#${e.charCodeAt(0)};`);
@@ -22,7 +21,6 @@
         }
     };
 
-    // EMOTE PROCESSOR - TWITCH
     class TwitchEmoteProcessor {
         constructor(settings) {
             this.settings = settings;
@@ -68,7 +66,6 @@
         }
     }
 
-    // EMOTE PROCESSOR - YOUTUBE
     class YouTubeEmoteProcessor {
         constructor(settings) {
             this.settings = settings;
@@ -186,7 +183,6 @@
         }
     }
 
-    // PRONOUNS MANAGER
     class PronounsManager {
         constructor(settings) {
             this.settings = settings;
@@ -219,7 +215,6 @@
         }
     }
 
-    // ROLE DETECTOR
     class RoleDetector {
         constructor(settings) {
             this.settings = settings;
@@ -251,6 +246,13 @@
 
         getEventType(listener, ev, provider) {
             if (provider === "youtube") {
+                if (listener === "event") {
+                    if (ev.type === "superchat") return "superchat";
+                    if (ev.type === "sponsor") return "sub";
+                    if (ev.type === "member") return "sub";
+                    return null;
+                }
+                
                 if (listener === "sponsor-latest") {
                     if (ev.gift === true) return "gift-subs";
                     return "sub";
@@ -275,7 +277,6 @@
         }
     }
 
-    // MOONBRIDGE - TWITCH WEBSOCKET
     class MoonBridge {
         constructor(config) {
             this.config = config;
@@ -438,12 +439,10 @@
         
             fragments.forEach(frag => {
                 if (frag.type === "emote" && frag.emote) {
-                    // Detectar si el emote tiene versión animada
                     const formats = frag.emote.format || [];
                     const hasAnimated = formats.includes("animated");
                     const hasStatic = formats.includes("static");
                     
-                    // Prioridad: animated > static
                     const urlType = hasAnimated ? "animated" : "static";
                     
                     emotes.push({
@@ -663,7 +662,6 @@
         }
     }
 
-    // MAIN CHAT CORE
     class ChatCore {
         constructor(config = {}) {
             this.settings = config.settings || {};
