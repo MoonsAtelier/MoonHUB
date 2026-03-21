@@ -288,6 +288,7 @@
                 "ffz": {}
             };
             this.ws = null;
+            this.processedEvents = new Set();
         }
 
         log(type, ...args) {
@@ -304,6 +305,25 @@
             });
             this.log("ok", "dispatch → " + listener, ev.detail.event);
             window.dispatchEvent(ev);
+        }
+
+        isEventProcessed(msg) {
+            const eventId = msg.id || msg._id || msg.data?.activityId || msg.data?._id;
+            if (!eventId) return false;
+            
+            if (this.processedEvents.has(eventId)) {
+                this.log("warn", "Evento duplicado ignorado →", eventId);
+                return true;
+            }
+            
+            this.processedEvents.add(eventId);
+            
+            if (this.processedEvents.size > 1000) {
+                const first = this.processedEvents.values().next().value;
+                this.processedEvents.delete(first);
+            }
+            
+            return false;
         }
 
         async fetch7TVGlobal() {
@@ -564,6 +584,8 @@
         }
 
         handleAlert(msg) {
+            if (this.isEventProcessed(msg)) return;
+            
             this.log("info", "WS RAW ALERT →", msg);
             
             const d = msg.data;
@@ -664,6 +686,8 @@
         }
 
         handleSession(msg) {
+            if (this.isEventProcessed(msg)) return;
+            
             this.log("info", "WS RAW SESSION →", msg);
             
             const d = msg.data;
@@ -695,14 +719,6 @@
 
         handle(msg) {
             if (!msg || !msg.topic) return;
-
-            console.log("%c[DEBUG FULL MSG]", "background:#f59e0b;color:#000;padding:4px", {
-                topic: msg.topic,
-                type: msg.type,
-                hasData: !!msg.data,
-                dataKeys: msg.data ? Object.keys(msg.data) : [],
-                fullMsg: msg
-            });
 
             this.log("ok", "incoming", msg.topic);
 
