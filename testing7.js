@@ -590,7 +590,16 @@
             
             const d = msg.data;
             if (!d) return;
-
+        
+            if (msg.type === "channelPointsRedemption") {
+                this.dispatch("event", {
+                    ...msg.data,
+                    type: msg.type,
+                    provider: "twitch"
+                });
+                return;
+            }
+        
             const base = {
                 name: d.username || d.displayName,
                 displayName: d.displayName || d.username,
@@ -601,17 +610,17 @@
                 type: msg.type,
                 originalEventName: `${msg.type}-latest`
             };
-
+        
             const eventData = {
                 data: base,
                 service: "twitch"
             };
-
+        
             if (msg.type === "follow") {
                 eventData.data.activityId = msg.activityId;
                 this.dispatch("follower-latest", eventData);
             }
-
+        
             if (msg.type === "subscriber") {
                 eventData.data = {
                     ...base,
@@ -625,7 +634,7 @@
                 }
                 this.dispatch("subscriber-latest", eventData);
             }
-
+        
             if (msg.type === "communityGiftPurchase") {
                 eventData.data = {
                     ...base,
@@ -636,18 +645,18 @@
                 };
                 this.dispatch("subscriber-latest", eventData);
             }
-
+        
             if (msg.type === "tip") {
                 eventData.data.amount = d.amount || 0;
                 this.dispatch("tip-latest", eventData);
             }
-
+        
             if (msg.type === "cheer") {
                 eventData.data.amount = d.amount || 0;
                 eventData.data.message = d.message || "";
                 this.dispatch("cheer-latest", eventData);
             }
-
+        
             if (msg.type === "raid") {
                 eventData.data.amount = d.amount || 0;
                 this.dispatch("raid-latest", eventData);
