@@ -582,8 +582,8 @@
 
             const eventData = {
                 data: base,
-                service: "twitch",
-                provider: "twitch"
+                service: "youtube",
+                provider: "youtube"
             };
 
             if (msg.type === "follow") {
