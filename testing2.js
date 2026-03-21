@@ -441,8 +441,6 @@
                 if (frag.type === "emote" && frag.emote) {
                     const formats = frag.emote.format || [];
                     const hasAnimated = formats.includes("animated");
-                    const hasStatic = formats.includes("static");
-                    
                     const urlType = hasAnimated ? "animated" : "static";
                     
                     emotes.push({
@@ -566,64 +564,119 @@
         }
 
         handleAlert(msg) {
+            this.log("info", "WS RAW ALERT →", msg);
+            
             const d = msg.data;
-            if (!d) return;
-
+            
             if (msg.type === "channelPointsRedemption") {
-                this.dispatch("event", { ...msg.data, provider: "youtube" });
+                this.dispatch("event", {
+                    ...d,
+                    type: msg.type,
+                    provider: "twitch"
+                });
+                return;
+            }
+
+            if (!d) {
+                this.log("warn", "Alert sin data →", msg);
                 return;
             }
 
             const base = {
-                name: d.username || d.displayName,
-                displayName: d.displayName || d.username,
-                type: msg.type
+                name: d.username || d.displayName || d.name || "Unknown",
+                displayName: d.displayName || d.username || d.name || "Unknown",
+                providerId: d.providerId || "",
+                avatar: d.avatar || "",
+                _id: msg._id || msg.activityId || "",
+                sessionTop: false,
+                type: msg.type,
+                originalEventName: `${msg.type}-latest`
             };
 
             const eventData = {
                 data: base,
-                service: "youtube",
-                provider: "youtube"
+                service: "twitch",
+                provider: "twitch"
             };
 
-            if (msg.type === "follow") {
-                this.dispatch("follower-latest", eventData);
-            } else if (msg.type === "subscriber") {
-                eventData.data.amount = d.amount || 1;
-                eventData.data.tier = d.tier || "1000";
-                if (d.gifted) {
-                    eventData.data.gifted = true;
-                }
-                this.dispatch("subscriber-latest", eventData);
-            } else if (msg.type === "communityGiftPurchase") {
-                eventData.data.amount = d.amount || 0;
-                eventData.data.bulkGifted = true;
-                this.dispatch("subscriber-latest", eventData);
-            } else if (msg.type === "tip") {
-                eventData.data.amount = d.amount || 0;
-                this.dispatch("tip-latest", eventData);
-            } else if (msg.type === "cheer") {
-                eventData.data.amount = d.amount || 0;
-                this.dispatch("cheer-latest", eventData);
-            } else if (msg.type === "raid") {
-                eventData.data.amount = d.amount || 0;
-                this.dispatch("raid-latest", eventData);
+            switch(msg.type) {
+                case "follow":
+                    eventData.data.activityId = msg.activityId;
+                    this.log("ok", "Dispatching follower-latest", eventData);
+                    this.dispatch("follower-latest", eventData);
+                    break;
+
+                case "subscriber":
+                    eventData.data = {
+                        ...base,
+                        amount: d.amount || 1,
+                        tier: d.tier || "1000",
+                        message: d.message || ""
+                    };
+                    if (d.gifted) {
+                        eventData.data.sender = d.sender || base.name;
+                        eventData.data.gifted = true;
+                    }
+                    this.log("ok", "Dispatching subscriber-latest", eventData);
+                    this.dispatch("subscriber-latest", eventData);
+                    break;
+
+                case "communityGiftPurchase":
+                    eventData.data = {
+                        ...base,
+                        sender: base.name,
+                        amount: d.amount || 0,
+                        bulkGifted: true,
+                        tier: d.tier || "1000",
+                        message: ""
+                    };
+                    this.log("ok", "Dispatching communityGift", eventData);
+                    this.dispatch("subscriber-latest", eventData);
+                    break;
+
+                case "tip":
+                    eventData.data.amount = d.amount || 0;
+                    eventData.data.message = d.message || "";
+                    this.log("ok", "Dispatching tip-latest", eventData);
+                    this.dispatch("tip-latest", eventData);
+                    break;
+
+                case "cheer":
+                    eventData.data.amount = d.amount || 0;
+                    eventData.data.message = d.message || "";
+                    this.log("ok", "Dispatching cheer-latest", eventData);
+                    this.dispatch("cheer-latest", eventData);
+                    break;
+
+                case "raid":
+                    eventData.data.amount = d.amount || 0;
+                    this.log("ok", "Dispatching raid-latest", eventData);
+                    this.dispatch("raid-latest", eventData);
+                    break;
+
+                default:
+                    this.log("warn", "Tipo de alerta desconocido →", msg.type, msg);
             }
         }
 
         handle(msg) {
             if (!msg || !msg.topic) return;
 
-            console.log("%c[WS DEBUG]%c Topic:", "background:#9146ff;color:#fff;padding:2px 6px", "color:#38bdf8", msg.topic);
-            console.log("%c[WS DEBUG]%c Full message:", "background:#9146ff;color:#fff;padding:2px 6px", "color:#fbbf24", msg);
-        
+            console.log("%c[DEBUG FULL MSG]", "background:#f59e0b;color:#000;padding:4px", {
+                topic: msg.topic,
+                type: msg.type,
+                hasData: !!msg.data,
+                dataKeys: msg.data ? Object.keys(msg.data) : [],
+                fullMsg: msg
+            });
+
+            this.log("ok", "incoming", msg.topic);
+
             if (msg.topic === "channel.chat.message") {
-                console.log("%c[WS DEBUG]%c Chat message data:", "background:#9146ff;color:#fff;padding:2px 6px", "color:#22c55e", msg.data);
                 return this.handleChat(msg);
             }
             
             if (msg.topic === "channel.activities") {
-                console.log("%c[WS DEBUG]%c Activity data:", "background:#9146ff;color:#fff;padding:2px 6px", "color:#f59e0b", msg.data);
                 return this.handleAlert(msg);
             }
         }
