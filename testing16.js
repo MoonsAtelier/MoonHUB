@@ -255,6 +255,8 @@
                     rawType === "member";
         
                 if (hasNormalized) return null;
+        
+                if (provider === "youtube" && rawType === "subscriber") return "follow";
             }
         
             if (provider === "youtube") {
@@ -271,16 +273,25 @@
             }
         
             if (provider === "twitch") {
+        
+                // 🔥 COMMUNITY GIFTS (el que te faltaba)
+                if (listener === "communityGiftPurchase-latest") {
+                    return "gift-subs";
+                }
+        
+                // 🔥 SUB NORMAL / GIFTED
                 if (listener === "subscriber-latest") {
-                    if (ev.bulkGifted) return "gift-subs";
-                    if (ev.gifted) return "gifted-sub";
+                    if (ev.bulkGifted === true) return "gift-subs";
+                    if (ev.gifted === true) return "gifted-sub";
                     return "sub";
                 }
+        
                 if (listener === "cheer-latest") return "cheers";
                 if (listener === "raid-latest") return "raid";
                 if (listener === "tip-latest") return "tip";
                 if (listener === "follower-latest") return "follow";
                 if (listener === "channel-points-latest") return "points";
+        
                 if (listener === "event" && ev.type === "channelPointsRedemption") return "points";
         
                 return null;
