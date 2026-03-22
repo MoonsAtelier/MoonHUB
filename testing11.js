@@ -248,7 +248,13 @@
             if (provider === "youtube") {
                 if (listener === "event") {
                     if (ev.type === "superchat") return "superchat";
-                    if (ev.type === "sponsor") return "sub";
+                    if (ev.type === "sponsor"){
+                        if(ev.amount > 1){
+                            return "gift-subs;
+                        } else{
+                            return "sub";
+                        }
+                    }
                     if (ev.type === "member") return "sub";
                     if (ev.type === "subscriber") return "follow";
                     return null;
