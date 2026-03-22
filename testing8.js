@@ -250,6 +250,7 @@
                     if (ev.type === "superchat") return "superchat";
                     if (ev.type === "sponsor") return "sub";
                     if (ev.type === "member") return "sub";
+                    if (ev.type === "subscriber") return "follow";
                     return null;
                 }
                 
