@@ -244,46 +244,46 @@
             return "viewer";
         }
 
-        function getEventType(listener, ev, provider) {
-            if (provider === "youtube") {
-                if (listener === "event") {
-                    if (ev.type === "superchat") return "superchat";
-                    if (ev.type === "sponsor" || ev.type === "member") return "sub";
-                    if (ev.type === "subscriber") return "follow";
-                    if (ev.type === "communityGiftPurchase") return "gift-subs";
-        
-                    return null;
-                }
-                if (listener === "sponsor-latest") {
-                    if (ev.bulkGifted === true) return "gift-subs";
-                    if (ev.gift === true) return "gift-subs";
-                    return "sub";
-                }
-        
-                if (listener === "superchat-latest") return "superchat";
-                if (listener === "tip-latest") return "tip";
-                if (listener === "subscriber-latest") return "follow";
-        
-                return null;
-            }
-        
-            if (provider === "twitch") {
-                if (listener === "subscriber-latest") {
-                    if (ev.bulkGifted) return "gift-subs";
-                    if (ev.gifted) return "gifted-sub";
-                    return "sub";
-                }
-                if (listener === "cheer-latest") return "cheers";
-                if (listener === "raid-latest") return "raid";
-                if (listener === "tip-latest") return "tip";
-                if (listener === "follower-latest") return "follow";
-                if (listener === "channel-points-latest") return "points";
-                if (listener === "event" && ev.type === "channelPointsRedemption") return "points";
-                return null;
-            }
-        
+        getEventType(listener, ev, provider) {
+    if (provider === "youtube") {
+        if (listener === "event") {
+            if (ev.type === "superchat") return "superchat";
+            if (ev.type === "sponsor" || ev.type === "member") return "sub";
+            if (ev.type === "subscriber") return "follow";
+            if (ev.type === "communityGiftPurchase") return "gift-subs";
             return null;
         }
+
+        if (listener === "sponsor-latest") {
+            if (ev.bulkGifted === true || ev.amount > 1) return "gift-subs";
+            if (ev.gift === true) return "gift-subs";
+            return "sub";
+        }
+
+        if (listener === "superchat-latest") return "superchat";
+        if (listener === "tip-latest") return "tip";
+        if (listener === "subscriber-latest") return "follow";
+
+        return null;
+    }
+
+    if (provider === "twitch") {
+        if (listener === "subscriber-latest") {
+            if (ev.bulkGifted) return "gift-subs";
+            if (ev.gifted) return "gifted-sub";
+            return "sub";
+        }
+        if (listener === "cheer-latest") return "cheers";
+        if (listener === "raid-latest") return "raid";
+        if (listener === "tip-latest") return "tip";
+        if (listener === "follower-latest") return "follow";
+        if (listener === "channel-points-latest") return "points";
+        if (listener === "event" && ev.type === "channelPointsRedemption") return "points";
+        return null;
+    }
+
+    return null;
+}
     }
 
     class MoonBridge {
